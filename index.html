@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DEAD DROPS | Bełchatów</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <!-- FIREBASE SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        body { font-family: 'Share Tech Mono', monospace; background-color: #0a0a0a; color: #00ff41; overflow: hidden; }
+        .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 50; background-size: 100% 2px, 3px 100%; pointer-events: none; }
+        .dark-map { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(100%); }
+        .glitch { animation: glitch 1s linear infinite; }
+        @keyframes glitch { 2%, 64% { transform: translate(2px,0) skew(0deg); } 4%, 60% { transform: translate(-2px,0) skew(0deg); } 62% { transform: translate(0,0) skew(5deg); } }
+        select, input[type=number], input[type=text] { background-color: #0a0a0a; color: inherit; border: 1px solid currentColor; outline: none; }
+        select option { background-color: #0a0a0a; color: #00ff41; }
+        select optgroup { font-weight: bold; font-style: normal; background-color: #1a1a1a; color: white; }
+        input[type=range] { accent-color: currentColor; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col crt">
+
+    <!-- WIDOK 0: REJESTRACJA / WYBÓR KSYWY -->
+    <div id="view-auth" class="hidden flex-1 flex flex-col justify-center items-center p-4 relative z-10">
+        <div class="max-w-sm w-full border border-[#00ff41] p-8 text-center bg-black">
+            <h1 class="text-2xl font-bold tracking-widest text-white mb-2">IDENTYFIKACJA</h1>
+            <p class="text-gray-500 text-xs mb-6">// WPROWADŹ KSYWĘ OPERACYJNĄ</p>
+            <input type="text" id="username-input" maxlength="15" class="w-full bg-transparent border-b-2 border-[#00ff41] text-center text-2xl text-white tracking-widest mb-6 py-2 outline-none" placeholder="NP. GHOST">
+            <button onclick="loginUser()" class="w-full border border-[#00ff41] text-[#00ff41] py-3 hover:bg-[#00ff41] hover:text-black transition-colors font-bold text-sm">
+                WEJDŹ DO SYSTEMU
+            </button>
+        </div>
+    </div>
+
+    <!-- WIDOK 1: SKLEP -->
+    <div id="view-shop" class="hidden flex-1 flex flex-col p-4 overflow-y-auto relative z-10">
+        <header class="flex justify-between items-center mb-6 mt-4 border-b border-gray-800 pb-4 max-w-md w-full mx-auto">
+            <div>
+                <h1 class="text-lg font-bold tracking-widest text-white">SYSTEM_ZAKUPU</h1>
+                <p class="text-gray-500 text-xs">OPERATOR: <span id="current-username" class="text-[#00ff41] font-bold">---</span></p>
+            </div>
+            <button onclick="logoutUser()" class="text-xs text-gray-500 hover:text-red-500 border border-gray-800 px-2 py-1">ZMIEŃ KSYWĘ</button>
+        </header>
+        
+        <div class="max-w-md w-full mx-auto pb-20">
+            
+            <!-- PORTFEL -->
+            <div class="border border-[#00ff41] p-4 mb-6 bg-[#00ff41]/10 flex justify-between items-center">
+                <div>
+                    <div class="text-[10px] text-gray-400">STAN KONTA</div>
+                    <div class="text-2xl font-bold text-[#00ff41]"><span id="wallet-balance">0</span> PKT</div>
+                </div>
+                <button onclick="openTopUp()" class="border border-[#00ff41] text-[#00ff41] px-4 py-2 text-sm font-bold hover:bg-[#00ff41] hover:text-black transition-colors">
+                    ZASIL KONTO
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <!-- ITEM 1: żołnierzyk -->
+                <div class="border border-[#00ff41] p-4 relative group">
+                    <h2 class="text-xl font-bold text-[#00ff41] mb-2">żołnierzyk</h2>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-400 text-xs">Cena:</span>
+                        <span class="text-[#00ff41] font-bold">5 PKT</span>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-[10px] text-gray-500 block mb-1">ILOŚĆ: <span id="qty-val-1" class="text-white">1</span></label>
+                        <input type="range" id="qty-1" min="1" max="10" value="1" class="w-full text-[#00ff41]" oninput="updatePrice(1, 5, '#00ff41')">
+                    </div>
+                    <div class="mb-4">
+                        <select id="zone-1" class="w-full p-2 text-sm text-[#00ff41]">
+                            <option value="" disabled selected>WYBIERZ STREFĘ ZRZUTU...</option>
+                            <optgroup label="BEŁCHATÓW">
+                                <option value="cmentarz">Lasy za Cmentarzem</option>
+                                <option value="paulinow">Lasy Paulinów</option>
+                                <option value="politanice">Lasy Politanice</option>
+                                <option value="lipy">Lasy za Szpitalem</option>
+                                <option value="binkow">Laski Binków</option>
+                                <option value="przytorze">Przytorze</option>
+                                <option value="grocholice_wschod">Grocholice</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button onclick="initPurchase('żołnierzyk', 5, '#00ff41', 1)" class="w-full border border-[#00ff41] text-[#00ff41] py-3 hover:bg-[#00ff41] hover:text-black transition-colors font-bold text-sm flex justify-between px-4">
+                        <span>ZAMÓW_ZRZUT</span>
+                        <span id="total-1">5 PKT</span>
+                    </button>
+                </div>
+                
+                <!-- ITEM 2: czołg -->
+                <div class="border border-[#00ffff] p-4 relative group">
+                    <h2 class="text-xl font-bold text-[#00ffff] mb-2">czołg</h2>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-400 text-xs">Cena:</span>
+                        <span class="text-[#00ffff] font-bold">15 PKT</span>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-[10px] text-gray-500 block mb-1">ILOŚĆ: <span id="qty-val-2" class="text-white">1</span></label>
+                        <input type="range" id="qty-2" min="1" max="10" value="1" class="w-full text-[#00ffff]" oninput="updatePrice(2, 15, '#00ffff')">
+                    </div>
+                    <div class="mb-4">
+                        <select id="zone-2" class="w-full p-2 text-sm text-[#00ffff] border-[#00ffff]">
+                            <option value="" disabled selected>WYBIERZ STREFĘ ZRZUTU...</option>
+                            <optgroup label="BEŁCHATÓW">
+                                <option value="cmentarz">Lasy za Cmentarzem</option>
+                                <option value="paulinow">Lasy Paulinów</option>
+                                <option value="politanice">Lasy Politanice</option>
+                                <option value="lipy">Lasy za Szpitalem</option>
+                                <option value="binkow">Laski Binków</option>
+                                <option value="przytorze">Przytorze</option>
+                                <option value="grocholice_wschod">Grocholice</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button onclick="initPurchase('czołg', 15, '#00ffff', 2)" class="w-full border border-[#00ffff] text-[#00ffff] py-3 hover:bg-[#00ffff] hover:text-black transition-colors font-bold text-sm flex justify-between px-4">
+                        <span>ZAMÓW_ZRZUT</span>
+                        <span id="total-2">15 PKT</span>
+                    </button>
+                </div>
+
+                <!-- ITEM 3: rakieta -->
+                <div class="border border-[#ffa500] p-4 relative group">
+                    <h2 class="text-xl font-bold text-[#ffa500] mb-2">rakieta</h2>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-400 text-xs">Cena:</span>
+                        <span class="text-[#ffa500] font-bold">30 PKT</span>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-[10px] text-gray-500 block mb-1">ILOŚĆ: <span id="qty-val-3" class="text-white">1</span></label>
+                        <input type="range" id="qty-3" min="1" max="10" value="1" class="w-full text-[#ffa500]" oninput="updatePrice(3, 30, '#ffa500')">
+                    </div>
+                    <div class="mb-4">
+                        <select id="zone-3" class="w-full p-2 text-sm text-[#ffa500] border-[#ffa500]">
+                            <option value="" disabled selected>WYBIERZ STREFĘ ZRZUTU...</option>
+                            <optgroup label="BEŁCHATÓW">
+                                <option value="cmentarz">Lasy za Cmentarzem</option>
+                                <option value="paulinow">Lasy Paulinów</option>
+                                <option value="politanice">Lasy Politanice</option>
+                                <option value="lipy">Lasy za Szpitalem</option>
+                                <option value="binkow">Laski Binków</option>
+                                <option value="przytorze">Przytorze</option>
+                                <option value="grocholice_wschod">Grocholice</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button onclick="initPurchase('rakieta', 30, '#ffa500', 3)" class="w-full border border-[#ffa500] text-[#ffa500] py-3 hover:bg-[#ffa500] hover:text-black transition-colors font-bold text-sm flex justify-between px-4">
+                        <span>ZAMÓW_ZRZUT</span>
+                        <span id="total-3">30 PKT</span>
+                    </button>
+                </div>
+
+                <!-- ITEM 4: α -->
+                <div class="border border-[#aa00ff] p-4 relative group">
+                    <h2 class="text-2xl font-bold text-[#aa00ff] mb-2">α</h2>
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-gray-400 text-xs">Cena:</span>
+                        <span class="text-[#aa00ff] font-bold">50 PKT</span>
+                    </div>
+                    <div class="mb-4">
+                        <label class="text-[10px] text-gray-500 block mb-1">ILOŚĆ: <span id="qty-val-4" class="text-white">1</span></label>
+                        <input type="range" id="qty-4" min="1" max="10" value="1" class="w-full text-[#aa00ff]" oninput="updatePrice(4, 50, '#aa00ff')">
+                    </div>
+                    <div class="mb-4">
+                        <select id="zone-4" class="w-full p-2 text-sm text-[#aa00ff] border-[#aa00ff]">
+                            <option value="" disabled selected>WYBIERZ STREFĘ ZRZUTU...</option>
+                            <optgroup label="BEŁCHATÓW">
+                                <option value="cmentarz">Lasy za Cmentarzem</option>
+                                <option value="paulinow">Lasy Paulinów</option>
+                                <option value="politanice">Lasy Politanice</option>
+                                <option value="lipy">Lasy za Szpitalem</option>
+                                <option value="binkow">Laski Binków</option>
+                                <option value="przytorze">Przytorze</option>
+                                <option value="grocholice_wschod">Grocholice</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button onclick="initPurchase('α', 50, '#aa00ff', 4)" class="w-full border border-[#aa00ff] text-[#aa00ff] py-3 hover:bg-[#aa00ff] hover:text-black transition-colors font-bold text-sm flex justify-between px-4">
+                        <span>ZAMÓW_ZRZUT</span>
+                        <span id="total-4">50 PKT</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WIDOK 2: DOŁADOWANIE -->
+    <div id="view-topup" class="hidden flex-1 flex flex-col justify-center items-center p-4 relative z-20">
+        <div class="max-w-sm w-full border border-white p-6 relative bg-black">
+            <h2 class="text-2xl font-bold text-white mb-2 text-center tracking-widest">ZASILENIE</h2>
+            <p class="text-center text-[#00ff41] text-xs mb-6">10 PLN = 1 PKT</p>
+            
+            <div class="mb-6">
+                <label class="text-[10px] text-gray-500 block mb-1 text-center">KWOTA DOŁADOWANIA (PLN)</label>
+                <input type="number" id="topup-amount" class="w-full bg-transparent border-b-2 border-gray-600 text-center text-3xl text-white outline-none focus:border-[#00ff41] transition-colors py-2" placeholder="0" oninput="calcPoints()">
+                <div class="text-center mt-2 text-xs text-gray-400">Otrzymasz: <span id="topup-preview" class="text-[#00ff41] font-bold">0 PKT</span></div>
+            </div>
+
+            <p class="text-gray-400 text-xs mb-2 text-center mt-6">WPROWADŹ KOD BLIK</p>
+            <input type="text" id="blik-code" maxlength="6" class="w-full bg-transparent border-b-2 border-gray-600 text-center text-4xl text-white tracking-[0.5em] mb-8 outline-none focus:border-white transition-colors" placeholder="------">
+            
+            <div id="topup-status" class="text-center text-sm h-6 mb-4 text-yellow-400 glitch hidden">PRZETWARZANIE...</div>
+            
+            <div class="flex gap-4">
+                <button onclick="cancelTopUp()" class="flex-1 border border-gray-600 text-gray-400 py-3 hover:text-white hover:border-white transition-colors text-sm">ANULUJ</button>
+                <button onclick="confirmTopUp()" class="flex-1 border border-[#00ff41] text-[#00ff41] py-3 hover:bg-[#00ff41] hover:text-black transition-colors font-bold text-sm">ZAPŁAĆ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WIDOK 3: POCZEKALNIA -->
+    <div id="view-waiting" class="hidden flex-1 flex flex-col justify-center items-center p-4 relative z-30">
+        <div class="max-w-sm w-full border border-yellow-500 p-8 text-center bg-black">
+            <div class="text-4xl mb-4 animate-spin inline-block text-yellow-500">⚙</div>
+            <h2 class="text-xl font-bold text-yellow-500 mb-2">OCZEKIWANIE NA KURIERA</h2>
+            <p class="text-gray-400 text-sm mb-6">Pobrano środki z portfela. Agent w drodze do strefy:</p>
+            <div id="wait-zone-name" class="text-white font-bold text-lg mb-6 tracking-wider">---</div>
+            <p class="text-xs text-gray-600 glitch">System pobierze dokładne koordynaty automatycznie po zrzucie pakietu.</p>
+            <div class="mt-8 text-[10px] text-gray-500">ID: <span id="wait-order-id">---</span></div>
+        </div>
+    </div>
+
+    <!-- WIDOK 4: RADAR MAPY -->
+    <div id="view-radar" class="hidden flex-1 flex flex-col relative z-40 h-full">
+        <div id="map" class="flex-1 dark-map bg-[#111]"></div>
+        <div class="absolute bottom-4 left-4 right-4 bg-black/90 border border-white p-4 z-[400] backdrop-blur-sm">
+            <div class="flex justify-between items-start mb-2 border-b border-gray-800 pb-2">
+                <div>
+                    <div class="text-gray-500 text-[10px] mb-1">CEL AKTUALNY</div>
+                    <div id="radar-title" class="font-bold text-lg">---</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-gray-500 text-[10px] mb-1">STATUS GPS</div>
+                    <div id="gps-status" class="text-red-500 text-xs glitch">SZUKANIE...</div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <div id="coord-display" class="text-[10px] text-gray-400">COORD: ---</div>
+                    <div id="zone-display" class="text-[10px] text-gray-400 mt-1">STREFA: ---</div>
+                </div>
+                <div class="text-right flex flex-col justify-end">
+                    <div class="text-[10px] text-gray-500 mb-1">DYSTANS</div>
+                    <div class="flex items-center justify-end gap-2">
+                        <span id="distance-display" class="text-2xl font-bold">---</span><span class="text-xs">m</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <button onclick="window.location.reload()" class="absolute top-4 left-4 z-[400] border border-red-500 text-red-500 bg-black/80 px-4 py-2 text-xs hover:bg-red-500 hover:text-black">
+            ZAKOŃCZ_MISJĘ
+        </button>
+    </div>
+
+    <!-- WIDOK 5: PANEL OPERATORA -->
+    <div id="view-admin" class="hidden flex-1 flex flex-col p-4 overflow-y-auto relative z-50 bg-black">
+        <header class="text-center mb-6 mt-4">
+            <h1 class="text-xl font-bold text-red-500">TERMINAL OPERATORA</h1>
+            <p class="text-gray-500 text-xs">// AKTYWNE ZAMÓWIENIA</p>
+        </header>
+        <div id="admin-orders-list" class="space-y-4 pb-10">
+            <!-- Zamówienia wygenerowane przez JS -->
+        </div>
+        <button onclick="window.location.reload()" class="w-full mt-4 border border-gray-600 text-gray-400 py-2 text-sm">ZAMKNIJ TERMINAL</button>
+    </div>
+
+    <!-- SKRYPTY LOGIKI -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBPNLbsY-309TNL3jm3lps0SNdJZ3OhmU4",
+            authDomain: "dead-drops-cc0a2.firebaseapp.com",
+            projectId: "dead-drops-cc0a2",
+            storageBucket: "dead-drops-cc0a2.firebasestorage.app",
+            messagingSenderId: "708731615405",
+            appId: "1:708731615405:web:8f14c82a03e2bcd6142e24",
+            measurementId: "G-5HS2JEGE66"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        const safeZones = {
+            'cmentarz': { name: "Lasy za Cmentarzem", points: [{lat: 51.361361, lng: 19.347944}, {lat: 51.361889, lng: 19.351278}, {lat: 51.364528, lng: 19.354111}] },
+            'paulinow': { name: "Lasy Paulinów", points: [{lat: 51.380556, lng: 19.388722}, {lat: 51.378750, lng: 19.388028}, {lat: 51.369056, lng: 19.400250}] },
+            'politanice': { name: "Lasy Politanice", points: [{lat: 51.368444, lng: 19.413194}, {lat: 51.369361, lng: 19.405722}] },
+            'lipy': { name: "Lasy za Szpitalem", points: [{lat: 51.378806, lng: 19.332806}, {lat: 51.381417, lng: 19.344889}, {lat: 51.380917, lng: 19.360972}] },
+            'binkow': { name: "Laski Binków", points: [{lat: 51.358944, lng: 19.390194}, {lat: 51.352889, lng: 19.391917}, {lat: 51.354861, lng: 19.395417}] },
+            'przytorze': { name: "Przytorze", points: [{lat: 51.347778, lng: 19.372056}, {lat: 51.352167, lng: 19.354472}, {lat: 51.345250, lng: 19.364306}] },
+            'grocholice_wschod': { name: "Grocholice Wschód", points: [{lat: 51.328472, lng: 19.374500}, {lat: 51.342722, lng: 19.384194}] }
+        };
+
+        let currentUsername = localStorage.getItem('deadDropsUser') || '';
+        let userPoints = 0;
+        let activeOrder = null;
+        let map, userMarker, watchId;
+
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('admin') === 'true') {
+                openAdminPanel();
+                return;
+            }
+
+            if (!currentUsername) {
+                showView('view-auth');
+            } else {
+                loadUserData();
+            }
+        };
+
+        function showView(viewId) {
+            ['view-auth', 'view-shop', 'view-topup', 'view-waiting', 'view-radar', 'view-admin'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
+        }
+
+        // LOGOWANIE / KSYWA
+        function loginUser() {
+            const input = document.getElementById('username-input').value.trim().toUpperCase();
+            if (input.length < 2) {
+                alert("Ksywa musi mieć minimum 2 znaki.");
+                return;
+            }
+            currentUsername = input;
+            localStorage.setItem('deadDropsUser', currentUsername);
+            loadUserData();
+        }
+
+        function logoutUser() {
+            localStorage.removeItem('deadDropsUser');
+            currentUsername = '';
+            showView('view-auth');
+        }
+
+        // POBIERANIE / TWORZENIE PROFILU W FIREBASE
+        function loadUserData() {
+            document.getElementById('current-username').textContent = currentUsername;
+            const userRef = db.collection('users').doc(currentUsername);
+
+            userRef.get().then(doc => {
+                if (doc.exists) {
+                    userPoints = doc.data().points || 0;
+                } else {
+                    // Tworzenie nowego profilu z 0 punktów
+                    userRef.set({ points: 0, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    userPoints = 0;
+                }
+                document.getElementById('wallet-balance').textContent = userPoints;
+                showView('view-shop');
+            }).catch(err => {
+                console.error("Błąd pobierania użytkownika:", err);
+                showView('view-shop');
+            });
+        }
+
+        function updatePrice(id, basePrice, color) {
+            const qty = document.getElementById(`qty-${id}`).value;
+            document.getElementById(`qty-val-${id}`).textContent = qty;
+            const total = qty * basePrice;
+            document.getElementById(`total-${id}`).textContent = `${total} PKT`;
+            document.getElementById(`total-${id}`).style.color = color;
+        }
+
+        function openTopUp() {
+            document.getElementById('topup-amount').value = '';
+            document.getElementById('blik-code').value = '';
+            document.getElementById('topup-preview').textContent = '0 PKT';
+            document.getElementById('topup-status').classList.add('hidden');
+            showView('view-topup');
+        }
+
+        function cancelTopUp() {
+            showView('view-shop');
+        }
+
+        function calcPoints() {
+            const pln = parseInt(document.getElementById('topup-amount').value) || 0;
+            const pkt = Math.floor(pln / 10);
+            document.getElementById('topup-preview').textContent = `${pkt} PKT`;
+        }
+
+        function confirmTopUp() {
+            const code = document.getElementById('blik-code').value;
+            
+            // SKRÓT DO TERMINALA OPERATORA
+            if (code === '170126') {
+                openAdminPanel();
+                return;
+            }
+
+            const pln = parseInt(document.getElementById('topup-amount').value) || 0;
+            if (pln < 10 || code.length !== 6) {
+                alert("Wpisz poprawną kwotę (min. 10 PLN) oraz 6-cyfrowy kod BLIK.");
+                return;
+            }
+
+            document.getElementById('topup-status').classList.remove('hidden');
+            document.getElementById('topup-status').textContent = "AUTORYZACJA...";
+
+            setTimeout(() => {
+                const pktGained = Math.floor(pln / 10);
+                userPoints += pktGained;
+
+                // Zapisz nowe punkty w bazie dla tego użytkownika
+                db.collection('users').doc(currentUsername).update({
+                    points: userPoints
+                }).then(() => {
+                    document.getElementById('wallet-balance').textContent = userPoints;
+                    alert(`Konto zasilono pomyślnie. Dodano ${pktGained} PKT.`);
+                    showView('view-shop');
+                });
+            }, 1500);
+        }
+
+        function initPurchase(title, basePriceInPkt, color, id) {
+            const zoneSelect = document.getElementById(`zone-${id}`);
+            const qty = parseInt(document.getElementById(`qty-${id}`).value);
+            const totalCost = qty * basePriceInPkt;
+            
+            if (!zoneSelect.value) {
+                zoneSelect.style.borderColor = 'red';
+                setTimeout(() => zoneSelect.style.borderColor = color, 500);
+                return;
+            }
+
+            if (userPoints < totalCost) {
+                alert(`Brak środków! Wymagane: ${totalCost} PKT. Zasil konto.`);
+                openTopUp();
+                return;
+            }
+
+            userPoints -= totalCost;
+
+            // Aktualizacja punktów w Firebase
+            db.collection('users').doc(currentUsername).update({
+                points: userPoints
+            });
+            document.getElementById('wallet-balance').textContent = userPoints;
+
+            activeOrder = {
+                username: currentUsername,
+                title: title,
+                color: color,
+                zoneId: zoneSelect.value,
+                zoneName: safeZones[zoneSelect.value].name,
+                qty: qty,
+                totalCostPkt: totalCost,
+                status: 'pending',
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            db.collection('orders').add(activeOrder).then(docRef => {
+                activeOrder.id = docRef.id;
+                startWaitingRoom();
+            }).catch(error => {
+                console.error("Błąd zapisu zamówienia:", error);
+            });
+        }
+
+        function startWaitingRoom() {
+            showView('view-waiting');
+            document.getElementById('wait-zone-name').textContent = activeOrder.zoneName;
+            document.getElementById('wait-order-id').textContent = activeOrder.id;
+
+            db.collection('orders').doc(activeOrder.id).onSnapshot(doc => {
+                const data = doc.data();
+                if (data && data.status === 'completed' && data.lat && data.lng) {
+                    activeOrder.lat = data.lat;
+                    activeOrder.lng = data.lng;
+                    startRadarMode();
+                }
+            });
+        }
+
+        function startRadarMode() {
+            showView('view-radar');
+            const titleEl = document.getElementById('radar-title');
+            titleEl.textContent = activeOrder.title;
+            titleEl.style.color = activeOrder.color;
+            document.getElementById('coord-display').textContent = `COORD: ${activeOrder.lat.toFixed(5)} N, ${activeOrder.lng.toFixed(5)} E`;
+            document.getElementById('zone-display').textContent = `STREFA: [${activeOrder.zoneName}]`;
+
+            map = L.map('map', { zoomControl: false }).setView([activeOrder.lat, activeOrder.lng], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            const targetIcon = L.divIcon({
+                html: `<div style="width: 20px; height: 20px; background-color: ${activeOrder.color}; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 15px ${activeOrder.color};"></div>`,
+                className: 'custom-div-icon', iconSize: [20, 20], iconAnchor: [10, 10]
+            });
+            L.marker([activeOrder.lat, activeOrder.lng], {icon: targetIcon}).addTo(map);
+
+            if ("geolocation" in navigator) {
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const lat = pos.coords.latitude; const lng = pos.coords.longitude;
+                        document.getElementById('gps-status').textContent = "SYGNAŁ POŁĄCZONY";
+                        document.getElementById('gps-status').className = "text-[#00ff41] text-xs";
+                        
+                        if (!userMarker) {
+                            const uIcon = L.divIcon({ html: `<div style="width: 14px; height: 14px; background-color: white; border-radius: 50%; box-shadow: 0 0 10px white;"></div>`, className: '', iconSize: [14, 14], iconAnchor: [7, 7] });
+                            userMarker = L.marker([lat, lng], {icon: uIcon}).addTo(map);
+                            map.fitBounds(L.latLngBounds([activeOrder.lat, activeOrder.lng], [lat, lng]), { padding: [50, 50] });
+                        } else {
+                            userMarker.setLatLng([lat, lng]);
+                        }
+                        const dist = map.distance([lat, lng], [activeOrder.lat, activeOrder.lng]);
+                        document.getElementById('distance-display').textContent = Math.round(dist);
+                        document.getElementById('distance-display').style.color = activeOrder.color;
+                    },
+                    (err) => { document.getElementById('gps-status').textContent = "BRAK SYGNAŁU GPS"; },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            }
+        }
+
+        function openAdminPanel() {
+            showView('view-admin');
+            const listDiv = document.getElementById('admin-orders-list');
+            
+            db.collection('orders').where("status", "==", "pending").onSnapshot(snapshot => {
+                listDiv.innerHTML = '';
+                if(snapshot.empty) {
+                    listDiv.innerHTML = '<div class="text-center text-gray-500 py-10">Brak aktywnych zamówień.</div>';
+                    return;
+                }
+                
+                snapshot.forEach(doc => {
+                    const order = doc.data();
+                    const zoneData = safeZones[order.zoneId];
+                    let pointOptions = '';
+                    
+                    zoneData.points.forEach((pt, index) => {
+                        pointOptions += `<option value="${index}">Punkt ${index + 1} (${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)})</option>`;
+                    });
+
+                    const card = `
+                        <div class="border border-red-500 p-4 bg-[#110000]">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-bold text-white">${order.title} <span class="text-xs text-gray-400">x${order.qty}</span></h3>
+                                <span class="text-red-500 font-bold">${order.totalCostPkt} PKT</span>
+                            </div>
+                            <div class="text-xs text-gray-400 mb-1">KLIENT: <span class="text-yellow-400 font-bold">${order.username || 'ANONIM'}</span></div>
+                            <div class="text-sm text-gray-400 mb-4">Strefa: <span class="text-white">${order.zoneName}</span></div>
+                            
+                            <label class="text-[10px] text-red-400 block mb-1">WYBIERZ PUNKT ZRZUTU:</label>
+                            <select id="admin-point-${doc.id}" class="w-full bg-black text-white border border-red-500 p-2 text-xs mb-4">
+                                ${pointOptions}
+                            </select>
+                            
+                            <button onclick="confirmAdminDrop('${doc.id}', '${order.zoneId}')" class="w-full bg-red-600 text-white font-bold py-2 text-sm hover:bg-red-500">
+                                POTWIERDŹ ZRZUT
+                            </button>
+                        </div>
+                    `;
+                    listDiv.innerHTML += card;
+                });
+            });
+        }
+
+        function confirmAdminDrop(orderId, zoneId) {
+            const selectEl = document.getElementById(`admin-point-${orderId}`);
+            const pointIndex = parseInt(selectEl.value);
+            const dropPoint = safeZones[zoneId].points[pointIndex];
+
+            db.collection('orders').doc(orderId).update({
+                status: 'completed',
+                lat: dropPoint.lat,
+                lng: dropPoint.lng,
+                completedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                alert("Zrzut potwierdzony! Klient otrzymał koordynaty.");
+            }).catch(error => {
+                alert("Błąd. Sprawdź bazę Firebase.");
+            });
+        }
+    </script>
+</body>
+</html>
